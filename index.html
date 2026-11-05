@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Renewals</title>
+<style>
+:root{--bg:#eef2f1;--ink:#1d2b2a;--mute:#5b6b69;--pine:#1f5c4f;--soon:#b7791f;--late:#b3261e;--line:#cfd9d6;--card:#fff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+main{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:1.6rem;margin:0}h2{font-size:1rem;margin:28px 0 8px;color:var(--mute);font-weight:600}
+small{display:block;color:var(--mute)}
+.card{background:var(--card);padding:24px;border-radius:10px;max-width:420px;margin:40px auto}
+input,select,textarea{width:100%;padding:10px;margin:4px 0 12px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff}
+label{display:block;font-size:.9rem;color:var(--mute)}
+.chk{display:flex;gap:8px;align-items:center}.chk input{width:auto;margin:0}
+button{padding:9px 14px;border:0;border-radius:6px;background:var(--pine);color:#fff;font:inherit;cursor:pointer}
+button.ghost{background:transparent;color:var(--pine);border:1px solid var(--pine)}
+button.danger{background:var(--late)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--soon);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.row>label{flex:1}
+header{display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap}
+.totals{font-size:2rem;font-weight:700;font-variant-numeric:tabular-nums}
+.item{display:flex;justify-content:space-between;gap:16px;background:var(--card);padding:14px 16px;margin-bottom:8px;border-radius:8px;border-left:6px solid var(--line)}
+.item.soon{border-color:var(--soon)}.item.late{border-color:var(--late)}
+.item .r{text-align:right}.item .r .row{justify-content:flex-end;margin-top:8px}
+.item button{padding:5px 10px;font-size:.85rem}
+.msg{color:var(--late)}
+dialog{border:0;border-radius:10px;padding:20px;width:min(440px,94vw)}
+dialog::backdrop{background:#0006}
+@media(max-width:560px){.item{flex-direction:column}.item .r{text-align:left}.item .r .row{justify-content:flex-start}}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<dialog id="dlg"></dialog>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+// 1. Paste your values from Supabase: Project Settings > API
+const SUPABASE_URL = "uosvxizpldrihzpdkesw";
+const SUPABASE_KEY = "sb_publishable_L0fo1cCNrU2j6o2zulyG6Q_W8okfjof";
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = s => document.querySelector(s), app = $('#app'), dlg = $('#dlg');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const gbp = n => new Intl.NumberFormat('en-GB', {style:'currency', currency:'GBP'}).format(n || 0);
+const days = d => Math.round((new Date(d) - new Date(new Date().toDateString())) / 864e5);
+const monthly = r => r.cost_frequency === 'monthly' ? +r.cost : +r.cost / 12;
+const fmt = d => new Date(d).toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'});
+let S = {user:null, hh:null, members:[], assets:[], rows:[]};
+const who = id => S.members.find(m => m.user_id === id)?.name;
+
+db.auth.onAuthStateChange((_, s) => { S.user = s?.user || null; setTimeout(boot, 0); });
+
+async function boot() {
+  if (!S.user) return authView();
+  const {data} = await db.from('members').select('household_id,name,households(name,invite_code)').eq('user_id', S.user.id).limit(1);
+  if (!data?.length) return setupView();
+  S.hh = {id: data[0].household_id, ...data[0].households};
+  load();
+}
+
+function authView() {
+  app.innerHTML = `<section class=card><h1>Renewals</h1><p>Sign in to see what is due.</p>
+  <input id=em type=email placeholder=Email autocomplete=email><input id=pw type=password placeholder=Password autocomplete=current-password>
+  <div class=row><button id=in>Sign in</button><button id=up class=ghost>Create account</button></div><p id=msg class=msg></p></section>`;
+  const go = fn => async () => {
+    const {error} = await fn({email:$('#em').value, password:$('#pw').value});
+    $('#msg').textContent = error ? error.message : 'If asked, confirm your email, then sign in.';
+  };
+  $('#in').onclick = go(v => db.auth.signInWithPassword(v));
+  $('#up').onclick = go(v => db.auth.signUp(v));
+}
+
+function setupView() {
+  app.innerHTML = `<section class=card><h1>Set up your household</h1>
+  <label>Your name<input id=nm></label>
+  <h2>Start a new household</h2><input id=hn placeholder="Our house"><button id=mk>Create household</button>
+  <h2>Or join your partner's</h2><input id=cd placeholder="Invite code"><button id=jn class=ghost>Join household</button><p id=msg class=msg></p></section>`;
+  const run = async (fn, args) => { const {error} = await db.rpc(fn, args); error ? $('#msg').textContent = error.message : boot(); };
+  $('#mk').onclick = () => run('create_household', {hname:$('#hn').value, uname:$('#nm').value});
+  $('#jn').onclick = () => run('join_household', {code:$('#cd').value.trim(), uname:$('#nm').value});
+}
+
+async function load() {
+  const h = S.hh.id;
+  const [m, a, r] = await Promise.all([
+    db.from('members').select('user_id,name').eq('household_id', h),
+    db.from('assets').select('*').eq('household_id', h).order('name'),
+    db.from('renewals').select('*').eq('household_id', h).order('due_date')]);
+  S.members = m.data || []; S.assets = a.data || []; S.rows = r.data || [];
+  dash();
+}
+
+const card = r => {
+  const d = days(r.due_date), a = S.assets.find(x => x.id === r.asset_id);
+  const sub = [a?.name, r.provider, r.reference].filter(Boolean).join(', ');
+  return `<article class="item ${d < 0 ? 'late' : d <= 30 ? 'soon' : ''}">
+  <div><b>${esc(r.title)}</b><small>${esc(sub)}</small>${r.status === 'in_progress' ? `<small>${esc(who(r.owner_id) || 'Someone')} is on it</small>` : ''}</div>
+  <div class=r><b>${d < 0 ? -d + ' days overdue' : d === 0 ? 'Due today' : 'In ' + d + ' days'}</b>
+  <small>${fmt(r.due_date)}, ${gbp(r.cost)} ${r.cost_frequency === 'monthly' ? 'a month' : 'a year'}</small>
+  <div class=row><button class=ghost data-a=on data-id=${r.id}>I'm on it</button><button data-a=ren data-id=${r.id}>Renewed</button><button class=ghost data-a=ed data-id=${r.id}>Edit</button></div></div></article>`;
+};
+
+function dash() {
+  const left = [...S.rows], per = [['Overdue', r => days(r.due_date) < 0], ['Next 30 days', r => days(r.due_date) <= 30], ['Next 90 days', r => days(r.due_date) <= 90], ['Later', () => true]];
+  let html = '';
+  for (const [t, f] of per) { const g = left.filter(f); g.forEach(x => left.splice(left.indexOf(x), 1)); if (g.length) html += `<h2>${t}</h2>` + g.map(card).join(''); }
+  const mo = S.rows.reduce((s, r) => s + monthly(r), 0);
+  app.innerHTML = `<header><div><h1>${esc(S.hh.name)}</h1><small>Partner invite code: <b>${esc(S.hh.invite_code)}</b></small></div>
+  <div><small>All renewals, per month</small><div class=totals>${gbp(mo)}</div><small>${gbp(mo * 12)} a year</small></div></header>
+  <div class=row style="margin-top:16px"><button data-a=add>Add renewal</button><button class=ghost data-a=out>Sign out</button></div>
+  ${html || '<h2>Nothing yet. Add your first renewal, such as house insurance.</h2>'}`;
+}
+
+app.onclick = async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const r = S.rows.find(x => x.id === b.dataset.id), a = b.dataset.a;
+  if (a === 'add') form();
+  if (a === 'ed') form(r);
+  if (a === 'ren') renewed(r);
+  if (a === 'out') db.auth.signOut();
+  if (a === 'on') { await db.from('renewals').update({status:'in_progress', owner_id:S.user.id}).eq('id', r.id); load(); }
+};
+
+function form(r = {}) {
+  const a = S.assets.find(x => x.id === r.asset_id), v = k => esc(r[k]);
+  dlg.innerHTML = `<form id=f><h2>${r.id ? 'Edit' : 'Add'} renewal</h2>
+  <label>What<input name=title required value="${v('title')}" placeholder="Caravan insurance"></label>
+  <label>Type<select name=category>${['insurance','utility','vehicle','other'].map(c => `<option ${r.category === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+  <label>For (pet, property, vehicle)<input name=asset list=al value="${esc(a?.name)}" placeholder="Biscuit, Home, Ford Focus"><datalist id=al>${S.assets.map(x => `<option value="${esc(x.name)}">`).join('')}</datalist></label>
+  <label>Provider<input name=provider value="${v('provider')}"></label>
+  <label>Policy or account number<input name=reference value="${v('reference')}"></label>
+  <label>Due date<input type=date name=due_date required value="${v('due_date')}"></label>
+  <div class=row><label>Cost<input type=number step=0.01 name=cost value="${v('cost')}"></label>
+  <label>Paid<select name=cost_frequency><option value=annual>per year</option><option value=monthly ${r.cost_frequency === 'monthly' ? 'selected' : ''}>per month</option></select></label></div>
+  <label>Notes<textarea name=notes rows=2>${v('notes')}</textarea></label>
+  <label class=chk><input type=checkbox name=is_private ${r.is_private ? 'checked' : ''}> Only I can see this</label>
+  <div class=row><button>Save</button><button type=button class=ghost id=cx>Cancel</button>${r.id ? '<button type=button class=danger id=del>Delete</button>' : ''}</div></form>`;
+  dlg.showModal();
+  $('#cx').onclick = () => dlg.close();
+  if (r.id) $('#del').onclick = async () => { if (confirm('Delete this renewal and its history?')) { await db.from('renewals').delete().eq('id', r.id); dlg.close(); load(); } };
+  $('#f').onsubmit = async e => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target)), nm = f.asset.trim(); let asset_id = null;
+    if (nm) {
+      let x = S.assets.find(a => a.name.toLowerCase() === nm.toLowerCase());
+      if (!x) x = (await db.from('assets').insert({household_id:S.hh.id, name:nm}).select().single()).data;
+      asset_id = x?.id;
+    }
+    const row = {household_id:S.hh.id, title:f.title, category:f.category, asset_id, provider:f.provider, reference:f.reference,
+      due_date:f.due_date, cost:+f.cost || 0, cost_frequency:f.cost_frequency, notes:f.notes, is_private:!!f.is_private,
+      owner_id:f.is_private ? S.user.id : (r.owner_id ?? null)};
+    const {error} = await (r.id ? db.from('renewals').update(row).eq('id', r.id) : db.from('renewals').insert(row));
+    if (error) return alert(error.message);
+    dlg.close(); load();
+  };
+}
+
+function renewed(r) {
+  const nd = new Date(r.due_date); nd.setFullYear(nd.getFullYear() + 1);
+  dlg.innerHTML = `<form id=f><h2>Renewed: ${esc(r.title)}</h2><small>Last cost ${gbp(r.cost)}</small>
+  <label>New cost<input type=number step=0.01 name=cost required value="${r.cost}"></label>
+  <label>Provider<input name=provider value="${esc(r.provider)}"></label>
+  <label>Next due date<input type=date name=due_date required value="${nd.toISOString().slice(0, 10)}"></label>
+  <div class=row><button>Save renewal</button><button type=button class=ghost id=cx>Cancel</button></div></form>`;
+  dlg.showModal();
+  $('#cx').onclick = () => dlg.close();
+  $('#f').onsubmit = async e => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target));
+    await db.from('renewal_history').insert({household_id:S.hh.id, renewal_id:r.id, period_end:r.due_date, cost:r.cost, provider:r.provider});
+    const {error} = await db.from('renewals').update({cost:+f.cost, provider:f.provider, due_date:f.due_date, status:'active'}).eq('id', r.id);
+    if (error) return alert(error.message);
+    dlg.close(); load();
+  };
+}
+</script>
+</body>
+</html>
