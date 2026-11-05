@@ -2,22 +2,32 @@
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#eef2f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121917" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Renewals">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Figtree:wght@400;600&display=swap">
 <title>Renewals</title>
 <style>
-:root{--bg:#eef2f1;--ink:#1d2b2a;--mute:#5b6b69;--pine:#1f5c4f;--soon:#b7791f;--late:#b3261e;--line:#cfd9d6;--card:#fff}
+:root{--bg:#eef2f1;--ink:#1d2b2a;--mute:#5b6b69;--pine:#1f5c4f;--soon:#b7791f;--late:#b3261e;--line:#cfd9d6;--card:#fff;--field:#fff;--pop:#fff;--onpine:#fff;--b1:#e3efec;--b2:#f8ecd3;--b2t:#8a5a0f;--b3:#f6dad7}
+@media(prefers-color-scheme:dark){:root{--bg:#121917;--ink:#e6efed;--mute:#9bb0ac;--pine:#4fb39c;--soon:#e0a84a;--late:#ff8a80;--line:#2c3a37;--card:#1b2523;--field:#141c1a;--pop:#222d2a;--onpine:#08201a;--b1:#1f3a34;--b2:#3d3115;--b2t:#f0c46d;--b3:#4a2422}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
-main{max-width:760px;margin:0 auto;padding:20px 16px 60px}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Figtree,system-ui,sans-serif}
+h1,h2,.badge b,.sum b{font-family:"Bricolage Grotesque",Figtree,system-ui,sans-serif}
+main{max-width:760px;margin:0 auto;padding:calc(20px + env(safe-area-inset-top)) 16px calc(100px + env(safe-area-inset-bottom))}
 h1{font-size:1.6rem;margin:0}h2{font-size:1rem;margin:28px 0 8px;color:var(--mute);font-weight:600}
 small{display:block;color:var(--mute)}
 .card{background:var(--card);padding:24px;border-radius:10px;max-width:420px;margin:40px auto}
-input,select,textarea{width:100%;padding:10px;margin:4px 0 12px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff}
+input,select,textarea{width:100%;padding:10px;margin:4px 0 12px;border:1px solid var(--line);border-radius:6px;font:inherit;min-height:44px;background:var(--field);color:var(--ink)}
 label{display:block;font-size:.9rem;color:var(--mute)}
 .chk{display:flex;gap:8px;align-items:center}.chk input{width:auto;margin:0}
-button{padding:9px 14px;border:0;border-radius:6px;background:var(--pine);color:#fff;font:inherit;cursor:pointer}
+button{padding:9px 14px;border:0;border-radius:6px;background:var(--pine);color:var(--onpine);font:inherit;min-height:44px;cursor:pointer}
 button.ghost{background:transparent;color:var(--pine);border:1px solid var(--pine)}
-button.danger{background:var(--late)}
+button.danger{background:#b3261e;color:#fff}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--soon);outline-offset:2px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.row>label{flex:1}
 header{display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap}
@@ -26,20 +36,25 @@ header{display:flex;justify-content:space-between;align-items:end;gap:12px;flex-
 .sum b{display:block;font-size:1.5rem;color:var(--ink);font-variant-numeric:tabular-nums}
 .sum .bad b{color:var(--late)}.sum .warn b{color:var(--soon)}
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
-.chip{background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:99px;white-space:nowrap}
-.chip.on{background:var(--pine);color:#fff;border-color:var(--pine)}
+.chip{min-height:40px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:99px;white-space:nowrap}
+.chip.on{background:var(--pine);color:var(--onpine);border-color:var(--pine)}
 .item{display:flex;align-items:center;gap:14px;background:var(--card);padding:12px 14px;margin-bottom:8px;border-radius:10px}
-.badge{min-width:68px;text-align:center;padding:6px 4px;border-radius:8px;background:#e3efec;color:var(--pine);line-height:1.1}
+.badge{min-width:68px;text-align:center;padding:6px 4px;border-radius:8px;background:var(--b1);color:var(--pine);line-height:1.1}
 .badge b{display:block;font-size:1.4rem;font-variant-numeric:tabular-nums}.badge small{color:inherit;font-size:.75rem}
-.soon .badge{background:#f8ecd3;color:#8a5a0f}.late .badge{background:#f6dad7;color:var(--late)}
+.soon .badge{background:var(--b2);color:var(--b2t)}.late .badge{background:var(--b3);color:var(--late)}
 .mid{flex:1;min-width:0}.mid>b{display:block}
-.act{display:flex;gap:6px;align-items:center}.act button{padding:6px 12px;font-size:.9rem}
-.more{position:relative}.more summary{list-style:none;cursor:pointer;padding:2px 10px;font-size:1.4rem;border-radius:6px}
+.act{display:flex;gap:6px;align-items:center}.act button{padding:6px 14px;font-size:.9rem;min-height:40px}
+.more{position:relative}.more summary{list-style:none;cursor:pointer;padding:6px 12px;font-size:1.4rem;border-radius:6px}
 .more summary::-webkit-details-marker{display:none}
-.more[open] .pop{position:absolute;right:0;top:100%;z-index:2;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:4px;min-width:130px;box-shadow:0 4px 12px #0002}
+.more[open] .pop{position:absolute;right:0;top:100%;z-index:2;background:var(--pop);border:1px solid var(--line);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:4px;min-width:130px;box-shadow:0 4px 12px #0002}
 .pop button{background:transparent;color:var(--ink);text-align:left}
 .msg{color:var(--late)}
-dialog{border:0;border-radius:10px;padding:20px;width:min(440px,94vw)}
+.hrow{padding:10px 0;border-bottom:1px solid var(--line)}.hrow .top{display:flex;justify-content:space-between;gap:8px}
+.bar{height:8px;border-radius:4px;background:var(--line);margin-top:6px}.bar i{display:block;height:100%;border-radius:4px;background:var(--pine)}
+.chg.up{color:var(--late)}.chg.down{color:var(--pine)}
+.fab{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:max(16px,env(safe-area-inset-bottom));width:60px;height:60px;border-radius:50%;font-size:2rem;line-height:1;padding:0;box-shadow:0 4px 14px #0005;z-index:5}
+.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:99px;z-index:20;box-shadow:0 4px 14px #0004;max-width:90vw}
+dialog{background:var(--card);color:var(--ink);border:0;border-radius:10px;padding:20px;width:min(440px,94vw)}
 dialog::backdrop{background:#0006}
 @media(max-width:560px){.item{flex-wrap:wrap}.mid{flex-basis:calc(100% - 90px)}.act{width:100%;justify-content:flex-end}}
 </style>
@@ -96,15 +111,25 @@ function setupView() {
 }
 
 async function load() {
+  if (!S.loaded) app.innerHTML = '<section class=card><p>Loading…</p></section>';
+  S.loaded = true;
   const h = S.hh.id;
-  const [m, a, r] = await Promise.all([
+  const [m, a, r, hi] = await Promise.all([
     db.from('members').select('user_id,name').eq('household_id', h),
     db.from('assets').select('*').eq('household_id', h).order('name'),
-    db.from('renewals').select('*').eq('household_id', h).order('due_date')]);
-  S.members = m.data || []; S.assets = a.data || []; S.rows = r.data || [];
+    db.from('renewals').select('*').eq('household_id', h).order('due_date'),
+    db.from('renewal_history').select('renewal_id,period_end,cost,provider').eq('household_id', h).order('period_end')]);
+  S.members = m.data || []; S.assets = a.data || []; S.rows = r.data || []; S.hist = {}; S.prev = {}; (hi.data || []).forEach(x => { (S.hist[x.renewal_id] ||= []).push(x); S.prev[x.renewal_id] = +x.cost; });
   dash();
 }
 
+function toast(m) { const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = m; document.body.append(t); setTimeout(() => t.remove(), 3200); }
+const chg = r => {
+  const p = S.prev?.[r.id]; if (!p) return '';
+  const d = +r.cost - p, sg = d > 0 ? '+' : '−';
+  if (d === 0) return '<small class=chg>Same price as last year</small>';
+  return `<small class="chg ${d > 0 ? 'up' : 'down'}">${sg}${gbp(Math.abs(d))} (${sg}${Math.round(Math.abs(d) / p * 100)}%) vs last year</small>`;
+};
 const ico = {insurance:'🛡️', utility:'💡', vehicle:'🚗', other:'📄'};
 const card = r => {
   const d = days(r.due_date), a = S.assets.find(x => x.id === r.asset_id);
@@ -113,9 +138,9 @@ const card = r => {
   return `<article class="item ${d < 0 ? 'late' : d <= 30 ? 'soon' : ''}">
   <div class=badge><b>${big}</b><small>${lab}</small></div>
   <div class=mid><b>${ico[r.category] || ico.other} ${esc(r.title)}</b><small>${esc(sub)}</small>
-  <small>${gbp(r.cost)} ${r.cost_frequency === 'monthly' ? 'a month' : 'a year'}${r.status === 'in_progress' ? ', ' + esc(who(r.owner_id) || 'Someone') + ' is on it' : ''}</small></div>
+  <small>${gbp(r.cost)} ${r.cost_frequency === 'monthly' ? 'a month' : 'a year'}${r.status === 'in_progress' ? ', ' + esc(who(r.owner_id) || 'Someone') + ' is on it' : ''}</small>${chg(r)}</div>
   <div class=act><button data-a=ren data-id=${r.id}>Renewed</button>
-  <details class=more><summary aria-label="More actions">⋯</summary><div class=pop><button data-a=on data-id=${r.id}>I'm on it</button><button data-a=ed data-id=${r.id}>Edit</button></div></details></div></article>`;
+  <details class=more><summary aria-label="More actions">⋯</summary><div class=pop><button data-a=hist data-id=${r.id}>Price history</button><button data-a=on data-id=${r.id}>I'm on it</button><button data-a=ed data-id=${r.id}>Edit</button></div></details></div></article>`;
 };
 
 function dash() {
@@ -128,9 +153,9 @@ function dash() {
   const used = S.assets.filter(a => all.some(r => r.asset_id === a.id));
   const chips = used.length > 1 ? `<div class=chips><button class="chip ${S.f ? '' : 'on'}" data-a=f data-id="">All</button>${used.map(a => `<button class="chip ${S.f === a.id ? 'on' : ''}" data-a=f data-id="${a.id}">${esc(a.name)}</button>`).join('')}</div>` : '';
   app.innerHTML = `<header><div><h1>${esc(S.hh.name)}</h1><small>Partner invite code: <b>${esc(S.hh.invite_code)}</b></small></div>
-  <div class=row><button data-a=add>Add renewal</button><button class=ghost data-a=out>Sign out</button></div></header>
+  <div class=row><button class=ghost data-a=out>Sign out</button></div></header>
   <div class=sum><div class=bad><b>${late}</b>overdue</div><div class=warn><b>${soon}</b>due in 30 days</div><div><b>${gbp(mo)}</b>a month, ${gbp(mo * 12)} a year</div></div>
-  ${chips}${html || '<h2>Nothing here yet. Add a renewal, such as house insurance.</h2>'}`;
+  <button class=fab data-a=add aria-label="Add renewal">+</button>${chips}${html || '<h2>Nothing here yet. Add a renewal, such as house insurance.</h2>'}`;
 }
 
 app.onclick = async e => {
@@ -138,11 +163,12 @@ app.onclick = async e => {
   const r = S.rows.find(x => x.id === b.dataset.id), a = b.dataset.a;
   b.closest('details')?.removeAttribute('open');
   if (a === 'f') { S.f = b.dataset.id; dash(); }
+  if (a === 'hist') history(r);
   if (a === 'add') form();
   if (a === 'ed') form(r);
   if (a === 'ren') renewed(r);
   if (a === 'out') db.auth.signOut();
-  if (a === 'on') { await db.from('renewals').update({status:'in_progress', owner_id:S.user.id}).eq('id', r.id); load(); }
+  if (a === 'on') { await db.from('renewals').update({status:'in_progress', owner_id:S.user.id}).eq('id', r.id); load(); toast('Marked as yours'); }
 };
 
 function form(r = {}) {
@@ -161,9 +187,9 @@ function form(r = {}) {
   <div class=row><button>Save</button><button type=button class=ghost id=cx>Cancel</button>${r.id ? '<button type=button class=danger id=del>Delete</button>' : ''}</div></form>`;
   dlg.showModal();
   $('#cx').onclick = () => dlg.close();
-  if (r.id) $('#del').onclick = async () => { if (confirm('Delete this renewal and its history?')) { await db.from('renewals').delete().eq('id', r.id); dlg.close(); load(); } };
+  if (r.id) $('#del').onclick = async () => { if (confirm('Delete this renewal and its history?')) { await db.from('renewals').delete().eq('id', r.id); dlg.close(); load(); toast('Deleted'); } };
   $('#f').onsubmit = async e => {
-    e.preventDefault();
+    e.preventDefault(); const sb = e.submitter; sb.disabled = true; sb.textContent = 'Saving…';
     const f = Object.fromEntries(new FormData(e.target)), nm = f.asset.trim(); let asset_id = null;
     if (nm) {
       let x = S.assets.find(a => a.name.toLowerCase() === nm.toLowerCase());
@@ -174,9 +200,20 @@ function form(r = {}) {
       due_date:f.due_date, cost:+f.cost || 0, cost_frequency:f.cost_frequency, notes:f.notes, is_private:!!f.is_private,
       owner_id:f.is_private ? S.user.id : (r.owner_id ?? null)};
     const {error} = await (r.id ? db.from('renewals').update(row).eq('id', r.id) : db.from('renewals').insert(row));
-    if (error) return alert(error.message);
-    dlg.close(); load();
+    if (error) { sb.disabled = false; sb.textContent = 'Save'; return toast(error.message); }
+    dlg.close(); load(); toast('Saved');
   };
+}
+
+function history(r) {
+  const rows = [...(S.hist[r.id] || []).map(x => ({d:x.period_end, c:+x.cost, p:x.provider})), {d:r.due_date, c:+r.cost, p:r.provider, cur:true}];
+  const max = Math.max(...rows.map(x => x.c), 1), per = r.cost_frequency === 'monthly' ? 'a month' : 'a year';
+  const delta = (c, p) => { const d = c - p, sg = d > 0 ? '+' : '−'; return d === 0 ? '<small class=chg>No change</small>' : `<small class="chg ${d > 0 ? 'up' : 'down'}">${sg}${gbp(Math.abs(d))} (${sg}${Math.round(Math.abs(d) / p * 100)}%)</small>`; };
+  const first = rows[0], tot = rows.length > 1 && first.c > 0 ? `<p>${delta(+r.cost, first.c)} since ${fmt(first.d)}</p>` : '<p><small>Only one price so far. Each time you use Renewed, that year\'s price is saved here.</small></p>';
+  const list = rows.map((x, i) => `<div class=hrow><div class=top><b>${x.cur ? 'Current, to ' : 'Year to '}${fmt(x.d)}</b><b>${gbp(x.c)} ${per}</b></div>
+  <div class=top><small>${esc(x.p || 'Provider not recorded')}</small>${i && rows[i - 1].c > 0 ? delta(x.c, rows[i - 1].c) : ''}</div><div class=bar><i style="width:${x.c / max * 100}%"></i></div></div>`).reverse().join('');
+  dlg.innerHTML = `<h2>Price history: ${esc(r.title)}</h2>${tot}${list}<div class=row style="margin-top:16px"><button class=ghost id=cx>Close</button></div>`;
+  dlg.showModal(); $('#cx').onclick = () => dlg.close();
 }
 
 function renewed(r) {
@@ -189,12 +226,12 @@ function renewed(r) {
   dlg.showModal();
   $('#cx').onclick = () => dlg.close();
   $('#f').onsubmit = async e => {
-    e.preventDefault();
+    e.preventDefault(); const sb = e.submitter; sb.disabled = true; sb.textContent = 'Saving…';
     const f = Object.fromEntries(new FormData(e.target));
     await db.from('renewal_history').insert({household_id:S.hh.id, renewal_id:r.id, period_end:r.due_date, cost:r.cost, provider:r.provider});
     const {error} = await db.from('renewals').update({cost:+f.cost, provider:f.provider, due_date:f.due_date, status:'active'}).eq('id', r.id);
-    if (error) return alert(error.message);
-    dlg.close(); load();
+    if (error) { sb.disabled = false; sb.textContent = 'Save'; return toast(error.message); }
+    dlg.close(); load(); toast('Renewed, next due ' + fmt(f.due_date));
   };
 }
 </script>
