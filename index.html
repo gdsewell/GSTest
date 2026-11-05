@@ -40,7 +40,7 @@ dialog::backdrop{background:#0006}
 // 1. Paste your values from Supabase: Project Settings > API
 const SUPABASE_URL = "https://uosvxizpldrihzpdkesw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_L0fo1cCNrU2j6o2zulyG6Q_W8okfjof";
-
+// another committ
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = s => document.querySelector(s), app = $('#app'), dlg = $('#dlg');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
