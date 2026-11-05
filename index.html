@@ -21,15 +21,27 @@ button.danger{background:var(--late)}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--soon);outline-offset:2px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.row>label{flex:1}
 header{display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap}
-.totals{font-size:2rem;font-weight:700;font-variant-numeric:tabular-nums}
-.item{display:flex;justify-content:space-between;gap:16px;background:var(--card);padding:14px 16px;margin-bottom:8px;border-radius:8px;border-left:6px solid var(--line)}
-.item.soon{border-color:var(--soon)}.item.late{border-color:var(--late)}
-.item .r{text-align:right}.item .r .row{justify-content:flex-end;margin-top:8px}
-.item button{padding:5px 10px;font-size:.85rem}
+.sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0}
+.sum div{background:var(--card);padding:12px;border-radius:8px;font-size:.85rem;color:var(--mute)}
+.sum b{display:block;font-size:1.5rem;color:var(--ink);font-variant-numeric:tabular-nums}
+.sum .bad b{color:var(--late)}.sum .warn b{color:var(--soon)}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.chip{background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:99px;white-space:nowrap}
+.chip.on{background:var(--pine);color:#fff;border-color:var(--pine)}
+.item{display:flex;align-items:center;gap:14px;background:var(--card);padding:12px 14px;margin-bottom:8px;border-radius:10px}
+.badge{min-width:68px;text-align:center;padding:6px 4px;border-radius:8px;background:#e3efec;color:var(--pine);line-height:1.1}
+.badge b{display:block;font-size:1.4rem;font-variant-numeric:tabular-nums}.badge small{color:inherit;font-size:.75rem}
+.soon .badge{background:#f8ecd3;color:#8a5a0f}.late .badge{background:#f6dad7;color:var(--late)}
+.mid{flex:1;min-width:0}.mid>b{display:block}
+.act{display:flex;gap:6px;align-items:center}.act button{padding:6px 12px;font-size:.9rem}
+.more{position:relative}.more summary{list-style:none;cursor:pointer;padding:2px 10px;font-size:1.4rem;border-radius:6px}
+.more summary::-webkit-details-marker{display:none}
+.more[open] .pop{position:absolute;right:0;top:100%;z-index:2;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:4px;min-width:130px;box-shadow:0 4px 12px #0002}
+.pop button{background:transparent;color:var(--ink);text-align:left}
 .msg{color:var(--late)}
 dialog{border:0;border-radius:10px;padding:20px;width:min(440px,94vw)}
 dialog::backdrop{background:#0006}
-@media(max-width:560px){.item{flex-direction:column}.item .r{text-align:left}.item .r .row{justify-content:flex-start}}
+@media(max-width:560px){.item{flex-wrap:wrap}.mid{flex-basis:calc(100% - 90px)}.act{width:100%;justify-content:flex-end}}
 </style>
 </head>
 <body>
@@ -38,9 +50,9 @@ dialog::backdrop{background:#0006}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 // 1. Paste your values from Supabase: Project Settings > API
-const SUPABASE_URL = "https://uosvxizpldrihzpdkesw.supabase.co";
-const SUPABASE_KEY = "sb_publishable_L0fo1cCNrU2j6o2zulyG6Q_W8okfjof";
-// another committ
+const SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
+const SUPABASE_KEY = "YOUR-ANON-PUBLIC-KEY";
+
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = s => document.querySelector(s), app = $('#app'), dlg = $('#dlg');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -93,30 +105,39 @@ async function load() {
   dash();
 }
 
+const ico = {insurance:'🛡️', utility:'💡', vehicle:'🚗', other:'📄'};
 const card = r => {
   const d = days(r.due_date), a = S.assets.find(x => x.id === r.asset_id);
-  const sub = [a?.name, r.provider, r.reference].filter(Boolean).join(', ');
+  const sub = [a?.name, r.provider, fmt(r.due_date)].filter(Boolean).join(', ');
+  const big = d < 0 ? -d : d === 0 ? 'Today' : d, lab = d < 0 ? 'days late' : d === 0 ? '' : d === 1 ? 'day' : 'days';
   return `<article class="item ${d < 0 ? 'late' : d <= 30 ? 'soon' : ''}">
-  <div><b>${esc(r.title)}</b><small>${esc(sub)}</small>${r.status === 'in_progress' ? `<small>${esc(who(r.owner_id) || 'Someone')} is on it</small>` : ''}</div>
-  <div class=r><b>${d < 0 ? -d + ' days overdue' : d === 0 ? 'Due today' : 'In ' + d + ' days'}</b>
-  <small>${fmt(r.due_date)}, ${gbp(r.cost)} ${r.cost_frequency === 'monthly' ? 'a month' : 'a year'}</small>
-  <div class=row><button class=ghost data-a=on data-id=${r.id}>I'm on it</button><button data-a=ren data-id=${r.id}>Renewed</button><button class=ghost data-a=ed data-id=${r.id}>Edit</button></div></div></article>`;
+  <div class=badge><b>${big}</b><small>${lab}</small></div>
+  <div class=mid><b>${ico[r.category] || ico.other} ${esc(r.title)}</b><small>${esc(sub)}</small>
+  <small>${gbp(r.cost)} ${r.cost_frequency === 'monthly' ? 'a month' : 'a year'}${r.status === 'in_progress' ? ', ' + esc(who(r.owner_id) || 'Someone') + ' is on it' : ''}</small></div>
+  <div class=act><button data-a=ren data-id=${r.id}>Renewed</button>
+  <details class=more><summary aria-label="More actions">⋯</summary><div class=pop><button data-a=on data-id=${r.id}>I'm on it</button><button data-a=ed data-id=${r.id}>Edit</button></div></details></div></article>`;
 };
 
 function dash() {
-  const left = [...S.rows], per = [['Overdue', r => days(r.due_date) < 0], ['Next 30 days', r => days(r.due_date) <= 30], ['Next 90 days', r => days(r.due_date) <= 90], ['Later', () => true]];
+  const all = S.rows, rows = S.f ? all.filter(r => r.asset_id === S.f) : all;
+  const left = [...rows], per = [['Overdue', r => days(r.due_date) < 0], ['Next 30 days', r => days(r.due_date) <= 30], ['Next 90 days', r => days(r.due_date) <= 90], ['Later', () => true]];
   let html = '';
   for (const [t, f] of per) { const g = left.filter(f); g.forEach(x => left.splice(left.indexOf(x), 1)); if (g.length) html += `<h2>${t}</h2>` + g.map(card).join(''); }
-  const mo = S.rows.reduce((s, r) => s + monthly(r), 0);
+  const mo = all.reduce((s, r) => s + monthly(r), 0), late = all.filter(r => days(r.due_date) < 0).length;
+  const soon = all.filter(r => { const d = days(r.due_date); return d >= 0 && d <= 30; }).length;
+  const used = S.assets.filter(a => all.some(r => r.asset_id === a.id));
+  const chips = used.length > 1 ? `<div class=chips><button class="chip ${S.f ? '' : 'on'}" data-a=f data-id="">All</button>${used.map(a => `<button class="chip ${S.f === a.id ? 'on' : ''}" data-a=f data-id="${a.id}">${esc(a.name)}</button>`).join('')}</div>` : '';
   app.innerHTML = `<header><div><h1>${esc(S.hh.name)}</h1><small>Partner invite code: <b>${esc(S.hh.invite_code)}</b></small></div>
-  <div><small>All renewals, per month</small><div class=totals>${gbp(mo)}</div><small>${gbp(mo * 12)} a year</small></div></header>
-  <div class=row style="margin-top:16px"><button data-a=add>Add renewal</button><button class=ghost data-a=out>Sign out</button></div>
-  ${html || '<h2>Nothing yet. Add your first renewal, such as house insurance.</h2>'}`;
+  <div class=row><button data-a=add>Add renewal</button><button class=ghost data-a=out>Sign out</button></div></header>
+  <div class=sum><div class=bad><b>${late}</b>overdue</div><div class=warn><b>${soon}</b>due in 30 days</div><div><b>${gbp(mo)}</b>a month, ${gbp(mo * 12)} a year</div></div>
+  ${chips}${html || '<h2>Nothing here yet. Add a renewal, such as house insurance.</h2>'}`;
 }
 
 app.onclick = async e => {
   const b = e.target.closest('button'); if (!b) return;
   const r = S.rows.find(x => x.id === b.dataset.id), a = b.dataset.a;
+  b.closest('details')?.removeAttribute('open');
+  if (a === 'f') { S.f = b.dataset.id; dash(); }
   if (a === 'add') form();
   if (a === 'ed') form(r);
   if (a === 'ren') renewed(r);
