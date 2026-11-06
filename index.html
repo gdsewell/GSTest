@@ -49,6 +49,10 @@ header{display:flex;justify-content:space-between;align-items:end;gap:12px;flex-
 .more[open] .pop{position:absolute;right:0;top:100%;z-index:2;background:var(--pop);border:1px solid var(--line);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:4px;min-width:130px;box-shadow:0 4px 12px #0002}
 .pop button{background:transparent;color:var(--ink);text-align:left}
 .msg{color:var(--late)}
+.day{display:grid;gap:6px;padding:12px;background:var(--card);border-radius:10px;margin-bottom:8px}.day.today{outline:2px solid var(--pine)}.day input,.day select{margin:0}
+@media(min-width:560px){.day{grid-template-columns:150px 1fr 1fr;align-items:center}}
+.shop{display:flex;gap:12px;align-items:center;padding:12px 14px;background:var(--card);border-radius:10px;margin-bottom:6px;min-height:48px;color:var(--ink);font-size:1rem}
+.shop input{width:22px;height:22px;min-height:0;margin:0}.shop.done span{text-decoration:line-through;color:var(--mute)}
 .hrow{padding:10px 0;border-bottom:1px solid var(--line)}.hrow .top{display:flex;justify-content:space-between;gap:8px}
 .bar{height:8px;border-radius:4px;background:var(--line);margin-top:6px}.bar i{display:block;height:100%;border-radius:4px;background:var(--pine)}
 .chg.up{color:var(--late)}.chg.down{color:var(--pine)}
@@ -81,7 +85,7 @@ const who = id => S.members.find(m => m.user_id === id)?.name;
 db.auth.onAuthStateChange((_, s) => { S.user = s?.user || null; setTimeout(boot, 0); });
 
 async function boot() {
-  if (!S.user) return authView();
+  if (!S.user) { if (S.ch) { db.removeChannel(S.ch); S.ch = null; } return authView(); }
   const {data} = await db.from('members').select('household_id,name,households(name,invite_code)').eq('user_id', S.user.id).limit(1);
   if (!data?.length) return setupView();
   S.hh = {id: data[0].household_id, ...data[0].households};
@@ -120,8 +124,89 @@ async function load() {
     db.from('renewals').select('*').eq('household_id', h).order('due_date'),
     db.from('renewal_history').select('renewal_id,period_end,cost,provider').eq('household_id', h).order('period_end')]);
   S.members = m.data || []; S.assets = a.data || []; S.rows = r.data || []; S.hist = {}; S.prev = {}; (hi.data || []).forEach(x => { (S.hist[x.renewal_id] ||= []).push(x); S.prev[x.renewal_id] = +x.cost; });
-  dash();
+  await loadMeals(); sub(); show();
 }
+
+const mon = () => { const t = new Date(); t.setHours(12, 0, 0, 0); t.setDate(t.getDate() - (t.getDay() + 6) % 7 + 7 * (S.wk || 0)); return t; };
+const wdays = () => { const m = mon(); return [...Array(7)].map((_, i) => { const d = new Date(m); d.setDate(m.getDate() + i); return d; }); };
+const iso = d => d.toISOString().slice(0, 10);
+const nav = () => { const o = (S.items || []).filter(i => !i.done).length; return `<nav class=chips style="margin-top:14px">${[['renewals', 'Renewals'], ['meals', 'Meals'], ['shop', 'Shopping' + (o ? ' (' + o + ')' : '')]].map(([k, l]) => `<button class="chip ${(S.tab || 'renewals') === k ? 'on' : ''}" data-a=tab data-id=${k}>${l}</button>`).join('')}</nav>`; };
+const show = () => ({meals: mealsView, shop: shopView}[S.tab] || dash)();
+
+async function loadMeals() {
+  const h = S.hh.id, w = wdays();
+  const [rc, mp, sh] = await Promise.all([
+    db.from('recipes').select('*').eq('household_id', h).order('title'),
+    db.from('meal_plan').select('*').eq('household_id', h).gte('day', iso(w[0])).lte('day', iso(w[6])),
+    db.from('shopping_items').select('*').eq('household_id', h).order('created_at')]);
+  S.mealErr = rc.error; S.recipes = rc.data || []; S.plan = {}; (mp.data || []).forEach(x => S.plan[x.day] = x); S.items = sh.data || [];
+}
+
+function sub() {
+  if (S.ch) return;
+  const cb = async () => { await loadMeals(); if (!/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName)) show(); };
+  S.ch = db.channel('hh');
+  for (const table of ['shopping_items', 'meal_plan']) S.ch.on('postgres_changes', {event:'*', schema:'public', table, filter:`household_id=eq.${S.hh.id}`}, cb);
+  S.ch.subscribe();
+}
+
+const head = () => `<header><div><h1>${esc(S.hh.name)}</h1></div><button class=ghost data-a=out>Sign out</button></header>${nav()}`;
+
+function mealsView() {
+  if (S.mealErr) return app.innerHTML = head() + '<section class=card style="max-width:none"><p>Meals and shopping need one more database step. Run <b>supabase/meals.sql</b> in the Supabase SQL Editor, then refresh.</p></section>';
+  const w = wdays(), today = iso(new Date(new Date().setHours(12))), opts = sel => '<option value="">No recipe</option>' + S.recipes.map(r => `<option value=${r.id} ${sel === r.id ? 'selected' : ''}>${esc(r.title)}</option>`).join('');
+  const rows = w.map(d => { const k = iso(d), p = S.plan[k] || {}; return `<div class="day ${k === today ? 'today' : ''}" data-day=${k}><b>${d.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'short'})}</b>
+  <select aria-label="Dinner for ${k}">${opts(p.recipe_id)}</select><input placeholder="or type a meal" value="${esc(p.note)}" aria-label="Note for ${k}"></div>`; }).join('');
+  app.innerHTML = head() + `<div class=row style="margin:16px 0;align-items:center"><button class=ghost data-a=wk data-id=-1 aria-label="Previous week">‹</button><b>Week of ${fmt(iso(w[0]))}</b><button class=ghost data-a=wk data-id=1 aria-label="Next week">›</button></div>
+  ${rows}<div class=row style="margin-top:16px"><button data-a=plan2shop>Add this week's ingredients to shopping list</button></div>
+  <h2>Recipes</h2>${S.recipes.map(r => `<div class=hrow><div class=top><b>${esc(r.title)}</b><button class=ghost data-a=redit data-id=${r.id}>Edit</button></div></div>`).join('') || '<small>No recipes yet. Tap + to add your first.</small>'}
+  <button class=fab data-a=radd aria-label="Add recipe">+</button>`;
+}
+
+function shopView() {
+  if (S.mealErr) return mealsView();
+  const open = S.items.filter(i => !i.done), done = S.items.filter(i => i.done);
+  const line = i => `<label class="shop ${i.done ? 'done' : ''}"><input type=checkbox data-a=tick data-id=${i.id} ${i.done ? 'checked' : ''}><span>${esc(i.name)}</span></label>`;
+  app.innerHTML = head() + `<form id=qf class=row style="margin:16px 0"><input id=qa placeholder="Add an item, e.g. milk" autocomplete=off style="flex:1;margin:0"><button>Add</button></form>
+  ${open.map(line).join('') || '<small>Nothing to buy.</small>'}
+  ${done.length ? `<h2>In the trolley</h2>${done.map(line).join('')}<button class=ghost data-a=clear style="margin-top:12px">Clear ticked items</button>` : ''}`;
+  $('#qf').onsubmit = async e => { e.preventDefault(); const v = $('#qa').value.trim(); if (!v) return; $('#qa').value = ''; await addItems([v]); };
+}
+
+async function addItems(names) {
+  const have = new Set(S.items.filter(i => !i.done).map(i => i.name.toLowerCase()));
+  const fresh = [...new Map(names.map(n => n.trim()).filter(n => n && !have.has(n.toLowerCase())).map(n => [n.toLowerCase(), n])).values()];
+  if (!fresh.length) return toast('Already on the list');
+  const {error} = await db.from('shopping_items').insert(fresh.map(name => ({household_id:S.hh.id, name, added_by:S.user.id})));
+  if (error) return toast(error.message);
+  await loadMeals(); show(); toast(fresh.length === 1 ? 'Added' : `Added ${fresh.length} items`);
+}
+
+function recipeForm(r = {}) {
+  dlg.innerHTML = `<form id=f><h2>${r.id ? 'Edit' : 'Add'} recipe</h2>
+  <label>Name<input name=title required value="${esc(r.title)}" placeholder="Chicken curry"></label>
+  <label>Ingredients, one per line<textarea name=ingredients rows=8 placeholder="500g chicken&#10;2 onions&#10;1 tin coconut milk">${esc(r.ingredients)}</textarea></label>
+  <label>Notes or link<textarea name=notes rows=3>${esc(r.notes)}</textarea></label>
+  <div class=row><button>Save</button><button type=button class=ghost id=cx>Cancel</button>${r.id ? '<button type=button class=danger id=del>Delete</button>' : ''}</div></form>`;
+  dlg.showModal(); $('#cx').onclick = () => dlg.close();
+  if (r.id) $('#del').onclick = async () => { if (confirm('Delete this recipe?')) { await db.from('recipes').delete().eq('id', r.id); dlg.close(); await loadMeals(); show(); toast('Deleted'); } };
+  $('#f').onsubmit = async e => {
+    e.preventDefault(); const sb = e.submitter; sb.disabled = true; sb.textContent = 'Saving…';
+    const f = Object.fromEntries(new FormData(e.target)), row = {household_id:S.hh.id, title:f.title, ingredients:f.ingredients, notes:f.notes};
+    const {error} = await (r.id ? db.from('recipes').update(row).eq('id', r.id) : db.from('recipes').insert(row));
+    if (error) { sb.disabled = false; sb.textContent = 'Save'; return toast(error.message); }
+    dlg.close(); await loadMeals(); show(); toast('Saved');
+  };
+}
+
+app.onchange = async e => {
+  const t = e.target;
+  if (t.dataset.a === 'tick') { const it = S.items.find(i => i.id === t.dataset.id); it.done = t.checked; show(); await db.from('shopping_items').update({done:t.checked}).eq('id', it.id); return; }
+  const row = t.closest('.day'); if (!row) return;
+  const p = {household_id:S.hh.id, day:row.dataset.day, recipe_id:row.querySelector('select').value || null, note:row.querySelector('input').value};
+  S.plan[p.day] = p;
+  const {error} = await db.from('meal_plan').upsert(p, {onConflict:'household_id,day'}); if (error) toast(error.message);
+};
 
 function toast(m) { const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = m; document.body.append(t); setTimeout(() => t.remove(), 3200); }
 const chg = r => {
@@ -154,7 +239,7 @@ function dash() {
   const chips = used.length > 1 ? `<div class=chips><button class="chip ${S.f ? '' : 'on'}" data-a=f data-id="">All</button>${used.map(a => `<button class="chip ${S.f === a.id ? 'on' : ''}" data-a=f data-id="${a.id}">${esc(a.name)}</button>`).join('')}</div>` : '';
   app.innerHTML = `<header><div><h1>${esc(S.hh.name)}</h1><small>Partner invite code: <b>${esc(S.hh.invite_code)}</b></small></div>
   <div class=row><button class=ghost data-a=out>Sign out</button></div></header>
-  <div class=sum><div class=bad><b>${late}</b>overdue</div><div class=warn><b>${soon}</b>due in 30 days</div><div><b>${gbp(mo)}</b>a month, ${gbp(mo * 12)} a year</div></div>
+  ${nav()}<div class=sum><div class=bad><b>${late}</b>overdue</div><div class=warn><b>${soon}</b>due in 30 days</div><div><b>${gbp(mo)}</b>a month, ${gbp(mo * 12)} a year</div></div>
   <button class=fab data-a=add aria-label="Add renewal">+</button>${chips}${html || '<h2>Nothing here yet. Add a renewal, such as house insurance.</h2>'}`;
 }
 
@@ -164,6 +249,15 @@ app.onclick = async e => {
   b.closest('details')?.removeAttribute('open');
   if (a === 'f') { S.f = b.dataset.id; dash(); }
   if (a === 'hist') history(r);
+  if (a === 'tab') { S.tab = b.dataset.id; show(); }
+  if (a === 'wk') { S.wk = (S.wk || 0) + +b.dataset.id; await loadMeals(); show(); }
+  if (a === 'radd') recipeForm();
+  if (a === 'redit') recipeForm(S.recipes.find(x => x.id === b.dataset.id));
+  if (a === 'clear') { await db.from('shopping_items').delete().eq('household_id', S.hh.id).eq('done', true); await loadMeals(); show(); }
+  if (a === 'plan2shop') {
+    const lines = Object.values(S.plan).flatMap(p => (S.recipes.find(x => x.id === p.recipe_id)?.ingredients || '').split('\n')).filter(l => l.trim());
+    lines.length ? addItems(lines) : toast('Pick some recipes for the week first');
+  }
   if (a === 'add') form();
   if (a === 'ed') form(r);
   if (a === 'ren') renewed(r);
