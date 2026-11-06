@@ -184,11 +184,21 @@ async function addItems(names) {
 
 function recipeForm(r = {}) {
   dlg.innerHTML = `<form id=f><h2>${r.id ? 'Edit' : 'Add'} recipe</h2>
+  <div class=row style="margin-bottom:12px"><input id=ru type=url placeholder="Import from a link: https://…" aria-label="Recipe link" style="flex:1;margin:0"><button type=button class=ghost id=ri>Import</button></div>
   <label>Name<input name=title required value="${esc(r.title)}" placeholder="Chicken curry"></label>
   <label>Ingredients, one per line<textarea name=ingredients rows=8 placeholder="500g chicken&#10;2 onions&#10;1 tin coconut milk">${esc(r.ingredients)}</textarea></label>
   <label>Notes or link<textarea name=notes rows=3>${esc(r.notes)}</textarea></label>
   <div class=row><button>Save</button><button type=button class=ghost id=cx>Cancel</button>${r.id ? '<button type=button class=danger id=del>Delete</button>' : ''}</div></form>`;
   dlg.showModal(); $('#cx').onclick = () => dlg.close();
+  $('#ri').onclick = async () => {
+    const url = $('#ru').value.trim(); if (!url) return toast('Paste a recipe link first');
+    const b = $('#ri'); b.disabled = true; b.textContent = 'Importing…';
+    const {data, error} = await db.functions.invoke('import-recipe', {body:{url}});
+    b.disabled = false; b.textContent = 'Import';
+    if (error || data?.error) return toast(data?.error || 'Import is not set up yet. See the README.');
+    const el = $('#f').elements; el.title.value = data.title; el.ingredients.value = data.ingredients; el.notes.value = data.notes;
+    toast('Imported. Check it over, then save.');
+  };
   if (r.id) $('#del').onclick = async () => { if (confirm('Delete this recipe?')) { await db.from('recipes').delete().eq('id', r.id); dlg.close(); await loadMeals(); show(); toast('Deleted'); } };
   $('#f').onsubmit = async e => {
     e.preventDefault(); const sb = e.submitter; sb.disabled = true; sb.textContent = 'Saving…';
