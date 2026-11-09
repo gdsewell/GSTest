@@ -52,7 +52,7 @@ header{display:flex;justify-content:space-between;align-items:end;gap:12px;flex-
 .day{display:grid;gap:6px;padding:12px;background:var(--card);border-radius:10px;margin-bottom:8px}.day.today{outline:2px solid var(--pine)}.day input,.day select{margin:0}
 @media(min-width:560px){.day{grid-template-columns:150px 1fr 1fr;align-items:center}}
 .shop{display:flex;gap:12px;align-items:center;padding:12px 14px;background:var(--card);border-radius:10px;margin-bottom:6px;min-height:48px;color:var(--ink);font-size:1rem}
-.shop input{width:22px;height:22px;min-height:0;margin:0}.shop.done span{text-decoration:line-through;color:var(--mute)}
+.shop input{width:22px;height:22px;min-height:0;margin:0}.shop span{flex:1;min-width:0;overflow-wrap:anywhere}.shop select.aisle{width:auto;max-width:44%;margin:0;min-height:36px;padding:4px 6px;font-size:.8rem;color:var(--mute)}.shop.done span{text-decoration:line-through;color:var(--mute)}
 .hrow{padding:10px 0;border-bottom:1px solid var(--line)}.hrow .top{display:flex;justify-content:space-between;gap:8px}
 .bar{height:8px;border-radius:4px;background:var(--line);margin-top:6px}.bar i{display:block;height:100%;border-radius:4px;background:var(--pine)}
 .chg.up{color:var(--late)}.chg.down{color:var(--pine)}
@@ -163,13 +163,34 @@ function mealsView() {
   <button class=fab data-a=radd aria-label="Add recipe">+</button>`;
 }
 
+const AISLE_KW = {
+  'Fruit & veg': 'apple,banana,orange,lemon,lime,grape,strawberr,blueberr,raspberr,berr,melon,watermelon,pear,peach,plum,mango,avocado,tomato,potato,onion,garlic,carrot,leek,cabbage,broccoli,cauliflower,pepper,courgette,cucumber,lettuce,salad,spinach,kale,mushroom,celery,ginger,chilli,basil,parsley,coriander,mint,thyme,rosemary,sweetcorn,aubergine,butternut squash,pumpkin,beetroot,radish,parsnip,swede,sprout,asparagus,pea,green bean,fruit,veg',
+  'Bakery': 'bread,roll,bagel,wrap,tortilla,pitta,naan,croissant,muffin,crumpet,cake,baguette,sourdough,burger bun,hot dog bun,buns',
+  'Meat & fish': 'chicken,beef,pork,lamb,mince,bacon,sausage,ham,steak,turkey,duck,salmon,cod,haddock,tuna steak,prawn,fish,gammon,chorizo,burger,fillet,drumstick,thigh,breast,ribs,sea bass,mackerel,trout',
+  'Dairy & eggs': 'milk,butter,cheese,cheddar,mozzarella,parmesan,yoghurt,yogurt,cream,egg,margarine,spread,feta,halloumi,custard,creme fraiche',
+  'Frozen': 'frozen,ice cream,fish finger,oven chip,waffle,ice lolly,pizza',
+  'Tins & jars': 'tinned,canned,tin of,tin ,baked bean,kidney bean,black bean,butter bean,chickpea,lentil,soup,tuna,passata,tomato puree,chopped tomato,coconut milk,stock,curry paste,pasta sauce,sauce,chilli sauce,ketchup,mayo,mustard,pickle,chutney,jam,honey,marmalade,peanut butter,olive,oil,vinegar,soy sauce',
+  'Dry goods & baking': 'pasta,spaghetti,penne,fusilli,macaroni,noodle,rice,couscous,quinoa,flour,sugar,baking powder,baking soda,yeast,cocoa,oats,rolled oats,cereal,porridge,muesli,cornflakes,stuffing,gravy,spice,cumin,paprika,turmeric,cinnamon,salt,black pepper,curry powder,breadcrumb',
+  'Snacks': 'crisps,biscuit,chocolate,sweets,nuts,peanuts,almond,cashew,walnut,popcorn,cracker,cereal bar,snack,raisin,dried fruit',
+  'Drinks': 'water,juice,fruit juice,orange juice,apple juice,squash,cola,lemonade,tea,coffee,wine,beer,lager,cider,gin,vodka,whisky,prosecco,smoothie,sparkling,energy drink',
+  'Household': 'washing powder,washing liquid,toilet roll,kitchen roll,washing up,dishwasher,detergent,laundry,fabric,bin bag,bin liner,foil,cling film,baking paper,bleach,cleaner,sponge,tissue,candle,light bulb,batter,napkin,sandwich bag,freezer bag,surface spray,air freshener',
+  'Health & beauty': 'shampoo,conditioner,toothpaste,toothbrush,shower gel,soap,deodorant,razor,tampon,sanitary,paracetamol,ibuprofen,plaster,vitamin,moisturiser,sun cream,cotton,mouthwash,floss,handwash',
+  'Pets': 'dog food,cat food,cat litter,dog treat,pet',
+};
+const AISLES = [...Object.keys(AISLE_KW), 'Other'];
+const KW = Object.entries(AISLE_KW).flatMap(([a, k]) => k.split(',').map(w => [a, w.length, new RegExp('\\b' + w)]));
+const guess = n => { n = n.toLowerCase(); let best = ['Other', 0]; for (const [a, len, re] of KW) if (len > best[1] && re.test(n)) best = [a, len]; return best[0]; };
+const ai = i => AISLES.includes(i.aisle) ? i.aisle : guess(i.name);
+
 function shopView() {
   if (S.mealErr) return mealsView();
   const open = S.items.filter(i => !i.done), done = S.items.filter(i => i.done);
-  const line = i => `<label class="shop ${i.done ? 'done' : ''}"><input type=checkbox data-a=tick data-id=${i.id} ${i.done ? 'checked' : ''}><span>${esc(i.name)}</span></label>`;
+  const line = (i, sel) => `<label class="shop ${i.done ? 'done' : ''}"><input type=checkbox data-a=tick data-id=${i.id} ${i.done ? 'checked' : ''}><span>${esc(i.name)}</span>${sel ? `<select class=aisle data-a=aisle data-id=${i.id} aria-label="Aisle for ${esc(i.name)}">${AISLES.map(a => `<option ${a === ai(i) ? 'selected' : ''}>${a}</option>`).join('')}</select>` : ''}</label>`;
+  const groups = AISLES.map(a => [a, open.filter(i => ai(i) === a).sort((x, y) => x.name.localeCompare(y.name))]).filter(([, g]) => g.length);
+  const list = groups.map(([a, g]) => `<h2>${a}</h2>${g.map(i => line(i, 1)).join('')}`).join('') || '<small>Nothing to buy.</small>';
   app.innerHTML = head() + `<form id=qf class=row style="margin:16px 0"><input id=qa placeholder="Add an item, e.g. milk" autocomplete=off style="flex:1;margin:0"><button>Add</button></form>
-  ${open.map(line).join('') || '<small>Nothing to buy.</small>'}
-  ${done.length ? `<h2>In the trolley</h2>${done.map(line).join('')}<button class=ghost data-a=clear style="margin-top:12px">Clear ticked items</button>` : ''}`;
+  ${list}
+  ${done.length ? `<h2>In the trolley</h2>${done.map(i => line(i)).join('')}<button class=ghost data-a=clear style="margin-top:12px">Clear ticked items</button>` : ''}`;
   $('#qf').onsubmit = async e => { e.preventDefault(); const v = $('#qa').value.trim(); if (!v) return; $('#qa').value = ''; await addItems([v]); };
 }
 
@@ -212,6 +233,11 @@ function recipeForm(r = {}) {
 app.onchange = async e => {
   const t = e.target;
   if (t.dataset.a === 'tick') { const it = S.items.find(i => i.id === t.dataset.id); it.done = t.checked; show(); await db.from('shopping_items').update({done:t.checked}).eq('id', it.id); return; }
+  if (t.dataset.a === 'aisle') {
+    const it = S.items.find(i => i.id === t.dataset.id); it.aisle = t.value; show();
+    const {error} = await db.from('shopping_items').update({aisle:t.value}).eq('id', it.id);
+    if (error) toast('Run supabase/aisles.sql in Supabase to keep aisle changes'); return;
+  }
   const row = t.closest('.day'); if (!row) return;
   const p = {household_id:S.hh.id, day:row.dataset.day, recipe_id:row.querySelector('select').value || null, note:row.querySelector('input').value};
   S.plan[p.day] = p;
