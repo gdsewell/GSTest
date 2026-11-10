@@ -49,6 +49,8 @@ header{display:flex;justify-content:space-between;align-items:end;gap:12px;flex-
 .more[open] .pop{position:absolute;right:0;top:100%;z-index:2;background:var(--pop);border:1px solid var(--line);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:4px;min-width:130px;box-shadow:0 4px 12px #0002}
 .pop button{background:transparent;color:var(--ink);text-align:left}
 .msg{color:var(--late)}
+.pick{display:flex;gap:6px}.pick select{flex:1;min-width:0}.view[hidden]{display:none}
+dialog h3{font-size:.95rem;color:var(--mute);margin:16px 0 4px}dialog ul{margin:0;padding-left:20px}dialog a{color:var(--pine);overflow-wrap:anywhere}
 .day{display:grid;gap:6px;padding:12px;background:var(--card);border-radius:10px;margin-bottom:8px}.day.today{outline:2px solid var(--pine)}.day input,.day select{margin:0}
 @media(min-width:560px){.day{grid-template-columns:150px 1fr 1fr;align-items:center}}
 .shop{display:flex;gap:12px;align-items:center;padding:12px 14px;background:var(--card);border-radius:10px;margin-bottom:6px;min-height:48px;color:var(--ink);font-size:1rem}
@@ -156,10 +158,10 @@ function mealsView() {
   if (S.mealErr) return app.innerHTML = head() + '<section class=card style="max-width:none"><p>Meals and shopping need one more database step. Run <b>supabase/meals.sql</b> in the Supabase SQL Editor, then refresh.</p></section>';
   const w = wdays(), today = iso(new Date(new Date().setHours(12))), opts = sel => '<option value="">No recipe</option>' + S.recipes.map(r => `<option value=${r.id} ${sel === r.id ? 'selected' : ''}>${esc(r.title)}</option>`).join('');
   const rows = w.map(d => { const k = iso(d), p = S.plan[k] || {}; return `<div class="day ${k === today ? 'today' : ''}" data-day=${k}><b>${d.toLocaleDateString('en-GB', {weekday:'long', day:'numeric', month:'short'})}</b>
-  <select aria-label="Dinner for ${k}">${opts(p.recipe_id)}</select><input placeholder="or type a meal" value="${esc(p.note)}" aria-label="Note for ${k}"></div>`; }).join('');
+  <div class=pick><select aria-label="Dinner for ${k}">${opts(p.recipe_id)}</select><button type=button class="ghost view" data-a=rview data-id="${p.recipe_id || ''}" ${p.recipe_id ? '' : 'hidden'} aria-label="View recipe">View</button></div><input placeholder="or type a meal" value="${esc(p.note)}" aria-label="Note for ${k}"></div>`; }).join('');
   app.innerHTML = head() + `<div class=row style="margin:16px 0;align-items:center"><button class=ghost data-a=wk data-id=-1 aria-label="Previous week">‹</button><b>Week of ${fmt(iso(w[0]))}</b><button class=ghost data-a=wk data-id=1 aria-label="Next week">›</button></div>
   ${rows}<div class=row style="margin-top:16px"><button data-a=plan2shop>Add this week's ingredients to shopping list</button></div>
-  <h2>Recipes</h2>${S.recipes.map(r => `<div class=hrow><div class=top><b>${esc(r.title)}</b><button class=ghost data-a=redit data-id=${r.id}>Edit</button></div></div>`).join('') || '<small>No recipes yet. Tap + to add your first.</small>'}
+  <h2>Recipes</h2>${S.recipes.map(r => `<div class=hrow><div class=top><b>${esc(r.title)}</b><span><button class=ghost data-a=rview data-id=${r.id}>View</button> <button class=ghost data-a=redit data-id=${r.id}>Edit</button></span></div></div>`).join('') || '<small>No recipes yet. Tap + to add your first.</small>'}
   <button class=fab data-a=radd aria-label="Add recipe">+</button>`;
 }
 
@@ -203,6 +205,19 @@ async function addItems(names) {
   await loadMeals(); show(); toast(fresh.length === 1 ? 'Added' : `Added ${fresh.length} items`);
 }
 
+function recipeView(r) {
+  const link = t => esc(t).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}" target=_blank rel=noopener>${u}</a>`);
+  const ing = (r.ingredients || '').split('\n').map(x => x.trim()).filter(Boolean);
+  dlg.innerHTML = `<h2>${esc(r.title)}</h2>
+  ${ing.length ? `<h3>Ingredients</h3><ul>${ing.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+  ${r.notes ? `<h3>Notes</h3><p style="white-space:pre-wrap;margin:0">${link(r.notes)}</p>` : '<small>No notes saved for this recipe.</small>'}
+  <div class=row style="margin-top:18px"><button class=ghost id=cx>Close</button><button class=ghost id=ed>Edit</button>${ing.length ? '<button id=sh>Add to shopping list</button>' : ''}</div>`;
+  dlg.showModal();
+  $('#cx').onclick = () => dlg.close();
+  $('#ed').onclick = () => { dlg.close(); recipeForm(r); };
+  if (ing.length) $('#sh').onclick = () => { dlg.close(); addItems(ing); };
+}
+
 function recipeForm(r = {}) {
   dlg.innerHTML = `<form id=f><h2>${r.id ? 'Edit' : 'Add'} recipe</h2>
   <div class=row style="margin-bottom:12px"><input id=ru type=url placeholder="Import from a link: https://…" aria-label="Recipe link" style="flex:1;margin:0"><button type=button class=ghost id=ri>Import</button></div>
@@ -241,6 +256,7 @@ app.onchange = async e => {
   const row = t.closest('.day'); if (!row) return;
   const p = {household_id:S.hh.id, day:row.dataset.day, recipe_id:row.querySelector('select').value || null, note:row.querySelector('input').value};
   S.plan[p.day] = p;
+  const vb = row.querySelector('.view'); vb.dataset.id = p.recipe_id || ''; vb.hidden = !p.recipe_id;
   const {error} = await db.from('meal_plan').upsert(p, {onConflict:'household_id,day'}); if (error) toast(error.message);
 };
 
@@ -287,6 +303,7 @@ app.onclick = async e => {
   if (a === 'hist') history(r);
   if (a === 'tab') { S.tab = b.dataset.id; show(); }
   if (a === 'wk') { S.wk = (S.wk || 0) + +b.dataset.id; await loadMeals(); show(); }
+  if (a === 'rview') { const rc = S.recipes.find(x => x.id === b.dataset.id); if (rc) recipeView(rc); }
   if (a === 'radd') recipeForm();
   if (a === 'redit') recipeForm(S.recipes.find(x => x.id === b.dataset.id));
   if (a === 'clear') { await db.from('shopping_items').delete().eq('household_id', S.hh.id).eq('done', true); await loadMeals(); show(); }
