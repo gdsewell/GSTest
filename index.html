@@ -75,6 +75,7 @@ const SUPABASE_URL = "https://uosvxizpldrihzpdkesw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_L0fo1cCNrU2j6o2zulyG6Q_W8okfjof";
 
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 const $ = s => document.querySelector(s), app = $('#app'), dlg = $('#dlg');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const gbp = n => new Intl.NumberFormat('en-GB', {style:'currency', currency:'GBP'}).format(n || 0);
@@ -86,7 +87,17 @@ const who = id => S.members.find(m => m.user_id === id)?.name;
 
 db.auth.onAuthStateChange((_, s) => { S.user = s?.user || null; setTimeout(boot, 0); });
 
+function offlineBoot(c) {
+  S.user = S.user || {id:c.u};
+  Object.assign(S, {hh:c.hh, members:c.members, assets:c.assets, rows:c.rows, prev:c.prev, hist:c.hist, recipes:c.recipes, plan:c.plan, items:c.items, docs:{}, loaded:true, tab:'shop'});
+  show();
+}
+addEventListener('online', async () => { const {data:{session}} = await db.auth.getSession(); S.user = session?.user || null; boot(); });
+addEventListener('offline', () => { if (S.hh && S.tab === 'shop') show(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) flush(); });
+
 async function boot() {
+  if (!navigator.onLine) { const c = readCache(); if (c) return offlineBoot(c); }
   if (!S.user) { if (S.ch) { db.removeChannel(S.ch); S.ch = null; } return authView(); }
   const {data} = await db.from('members').select('household_id,name,households(name,invite_code)').eq('user_id', S.user.id).limit(1);
   if (!data?.length) return setupView();
@@ -126,7 +137,7 @@ async function load() {
     db.from('renewals').select('*').eq('household_id', h).order('due_date'),
     db.from('renewal_history').select('renewal_id,period_end,cost,provider').eq('household_id', h).order('period_end')]);
   S.members = m.data || []; S.assets = a.data || []; S.rows = r.data || []; S.hist = {}; S.prev = {}; (hi.data || []).forEach(x => { (S.hist[x.renewal_id] ||= []).push(x); S.prev[x.renewal_id] = +x.cost; });
-  await loadMeals(); sub(); show();
+  await loadMeals(); await loadDocs(); sub(); show(); flush();
 }
 
 const mon = () => { const t = new Date(); t.setHours(12, 0, 0, 0); t.setDate(t.getDate() - (t.getDay() + 6) % 7 + 7 * (S.wk || 0)); return t; };
@@ -136,12 +147,40 @@ const nav = () => { const o = (S.items || []).filter(i => !i.done).length; retur
 const show = () => ({meals: mealsView, shop: shopView}[S.tab] || dash)();
 
 async function loadMeals() {
+  if (!navigator.onLine) return;
+  if (outbox().length) { await flush(); if (outbox().length) return; }
   const h = S.hh.id, w = wdays();
   const [rc, mp, sh] = await Promise.all([
     db.from('recipes').select('*').eq('household_id', h).order('title'),
     db.from('meal_plan').select('*').eq('household_id', h).gte('day', iso(w[0])).lte('day', iso(w[6])),
     db.from('shopping_items').select('*').eq('household_id', h).order('created_at')]);
-  S.mealErr = rc.error; S.recipes = rc.data || []; S.plan = {}; (mp.data || []).forEach(x => S.plan[x.day] = x); S.items = sh.data || [];
+  if (rc.error && /fetch|network/i.test(rc.error.message)) return;
+  S.mealErr = rc.error; S.recipes = rc.data || []; S.plan = {}; (mp.data || []).forEach(x => S.plan[x.day] = x); S.items = sh.data || []; cacheSave();
+}
+
+const outbox = () => { try { return JSON.parse(localStorage.getItem('outbox') || '[]'); } catch { return []; } };
+const setOut = o => { try { localStorage.setItem('outbox', JSON.stringify(o)); } catch {} };
+const readCache = () => { try { return JSON.parse(localStorage.getItem('hhc') || 'null'); } catch { return null; } };
+const cacheSave = () => { try { localStorage.setItem('hhc', JSON.stringify({u:S.user?.id, hh:S.hh, members:S.members, assets:S.assets, rows:S.rows, prev:S.prev, hist:S.hist, recipes:S.recipes, plan:S.plan, items:S.items})); } catch {} };
+const syncNote = () => { const n = outbox().length; return !navigator.onLine || n ? `<p style="color:var(--mute)">${navigator.onLine ? '' : 'You are offline. '}${n ? `${n} change${n === 1 ? '' : 's'} will sync when you are back online.` : 'Changes will sync when you are back online.'}</p>` : ''; };
+function queue(ops) { setOut([...outbox(), ...ops]); cacheSave(); flush(); }
+let flushing = false;
+async function flush() {
+  if (flushing || !navigator.onLine || !S.user || !S.hh) return;
+  flushing = true; let did = false;
+  try {
+    for (let o = outbox(); o.length; o = outbox()) {
+      const op = o[0], T = db.from('shopping_items'); let error;
+      if (op.t === 'add') ({error} = await T.upsert(op.row, {onConflict:'id', ignoreDuplicates:true}));
+      else if (op.t === 'tick') ({error} = await T.update({done:op.done}).eq('id', op.id));
+      else if (op.t === 'aisle') ({error} = await T.update({aisle:op.aisle}).eq('id', op.id));
+      else if (op.t === 'del') ({error} = await T.delete().in('id', op.ids));
+      if (error && /fetch|network/i.test(error.message)) break;
+      if (error) toast(op.t === 'aisle' ? 'Run supabase/aisles.sql to keep aisle changes' : error.message);
+      setOut(outbox().slice(1)); did = true;
+    }
+  } finally { flushing = false; }
+  if (did && !outbox().length) { await loadMeals(); if (!/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName)) show(); }
 }
 
 function sub() {
@@ -190,7 +229,7 @@ function shopView() {
   const line = (i, sel) => `<label class="shop ${i.done ? 'done' : ''}"><input type=checkbox data-a=tick data-id=${i.id} ${i.done ? 'checked' : ''}><span>${esc(i.name)}</span>${sel ? `<select class=aisle data-a=aisle data-id=${i.id} aria-label="Aisle for ${esc(i.name)}">${AISLES.map(a => `<option ${a === ai(i) ? 'selected' : ''}>${a}</option>`).join('')}</select>` : ''}</label>`;
   const groups = AISLES.map(a => [a, open.filter(i => ai(i) === a).sort((x, y) => x.name.localeCompare(y.name))]).filter(([, g]) => g.length);
   const list = groups.map(([a, g]) => `<h2>${a}</h2>${g.map(i => line(i, 1)).join('')}`).join('') || '<small>Nothing to buy.</small>';
-  app.innerHTML = head() + `<form id=qf class=row style="margin:16px 0"><input id=qa placeholder="Add an item, e.g. milk" autocomplete=off style="flex:1;margin:0"><button>Add</button></form>
+  app.innerHTML = head() + syncNote() + `<form id=qf class=row style="margin:16px 0"><input id=qa placeholder="Add an item, e.g. milk" autocomplete=off style="flex:1;margin:0"><button>Add</button></form>
   ${list}
   ${done.length ? `<h2>In the trolley</h2>${done.map(i => line(i)).join('')}<button class=ghost data-a=clear style="margin-top:12px">Clear ticked items</button>` : ''}`;
   $('#qf').onsubmit = async e => { e.preventDefault(); const v = $('#qa').value.trim(); if (!v) return; $('#qa').value = ''; await addItems([v]); };
@@ -200,9 +239,49 @@ async function addItems(names) {
   const have = new Set(S.items.filter(i => !i.done).map(i => i.name.toLowerCase()));
   const fresh = [...new Map(names.map(n => n.trim()).filter(n => n && !have.has(n.toLowerCase())).map(n => [n.toLowerCase(), n])).values()];
   if (!fresh.length) return toast('Already on the list');
-  const {error} = await db.from('shopping_items').insert(fresh.map(name => ({household_id:S.hh.id, name, added_by:S.user.id})));
-  if (error) return toast(error.message);
-  await loadMeals(); show(); toast(fresh.length === 1 ? 'Added' : `Added ${fresh.length} items`);
+  const rows = fresh.map(name => ({id:crypto.randomUUID(), household_id:S.hh.id, name, added_by:S.user.id}));
+  S.items.push(...rows.map(r => ({...r, done:false})));
+  queue(rows.map(row => ({t:'add', row})));
+  show(); toast(fresh.length === 1 ? 'Added' : `Added ${fresh.length} items`);
+}
+
+async function loadDocs() {
+  const {data} = await db.from('documents').select('*').eq('household_id', S.hh.id).order('created_at');
+  S.docs = {}; (data || []).forEach(d => (S.docs[d.renewal_id] ||= []).push(d));
+}
+
+function docsView(r) {
+  const list = S.docs?.[r.id] || [], kb = n => n > 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1e3)) + ' KB', st = db.storage.from('documents');
+  dlg.innerHTML = `<h2>Documents: ${esc(r.title)}</h2>
+  ${list.map(d => `<div class=hrow><div class=top><a href="#" data-open=${d.id}>${esc(d.name)}</a><button class=danger data-rm=${d.id} style="padding:4px 10px;min-height:36px">Delete</button></div><small>${kb(d.size || 0)}, added ${fmt(d.created_at)}</small></div>`).join('') || '<small>Nothing attached yet. Add the policy schedule or certificate.</small>'}
+  <label style="margin-top:16px">Add a PDF or photo, up to 10 MB<input type=file id=fi accept="application/pdf,image/*"></label>
+  <div class=row><button class=ghost id=cx>Close</button></div>`;
+  if (!dlg.open) dlg.showModal();
+  $('#cx').onclick = () => dlg.close();
+  dlg.querySelectorAll('[data-open]').forEach(a => a.onclick = async e => {
+    e.preventDefault(); const d = list.find(x => x.id === a.dataset.open), w = window.open('', '_blank');
+    const {data, error} = await st.createSignedUrl(d.path, 300);
+    if (error) { w?.close(); return toast(error.message); }
+    w ? (w.location.href = data.signedUrl) : (location.href = data.signedUrl);
+  });
+  dlg.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+    if (!confirm('Delete this document?')) return;
+    const d = list.find(x => x.id === b.dataset.rm);
+    await st.remove([d.path]); await db.from('documents').delete().eq('id', d.id);
+    await loadDocs(); show(); docsView(r); toast('Deleted');
+  });
+  $('#fi').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    if (f.size > 10485760) return toast('That file is over 10 MB');
+    if (!navigator.onLine) return toast('Uploading needs a connection');
+    e.target.disabled = true; toast('Uploading…');
+    const path = `${S.hh.id}/${r.id}/${Date.now()}-${f.name.replace(/[^\w.\-]+/g, '_')}`;
+    const up = await st.upload(path, f, {contentType:f.type});
+    if (up.error) { e.target.disabled = false; return toast(up.error.message); }
+    const {error} = await db.from('documents').insert({household_id:S.hh.id, renewal_id:r.id, name:f.name, path, size:f.size, uploaded_by:S.user.id});
+    if (error) { await st.remove([path]); e.target.disabled = false; return toast(error.message); }
+    await loadDocs(); show(); docsView(r); toast('Attached');
+  };
 }
 
 function recipeView(r) {
@@ -247,11 +326,10 @@ function recipeForm(r = {}) {
 
 app.onchange = async e => {
   const t = e.target;
-  if (t.dataset.a === 'tick') { const it = S.items.find(i => i.id === t.dataset.id); it.done = t.checked; show(); await db.from('shopping_items').update({done:t.checked}).eq('id', it.id); return; }
+  if (t.dataset.a === 'tick') { const it = S.items.find(i => i.id === t.dataset.id); it.done = t.checked; queue([{t:'tick', id:it.id, done:t.checked}]); show(); return; }
   if (t.dataset.a === 'aisle') {
     const it = S.items.find(i => i.id === t.dataset.id); it.aisle = t.value; show();
-    const {error} = await db.from('shopping_items').update({aisle:t.value}).eq('id', it.id);
-    if (error) toast('Run supabase/aisles.sql in Supabase to keep aisle changes'); return;
+    queue([{t:'aisle', id:it.id, aisle:t.value}]); return;
   }
   const row = t.closest('.day'); if (!row) return;
   const p = {household_id:S.hh.id, day:row.dataset.day, recipe_id:row.querySelector('select').value || null, note:row.querySelector('input').value};
@@ -270,14 +348,14 @@ const chg = r => {
 const ico = {insurance:'🛡️', utility:'💡', vehicle:'🚗', other:'📄'};
 const card = r => {
   const d = days(r.due_date), a = S.assets.find(x => x.id === r.asset_id);
-  const sub = [a?.name, r.provider, fmt(r.due_date)].filter(Boolean).join(', ');
+  const nd = S.docs?.[r.id]?.length, sub = [a?.name, r.provider, fmt(r.due_date), nd && `📎 ${nd}`].filter(Boolean).join(', ');
   const big = d < 0 ? -d : d === 0 ? 'Today' : d, lab = d < 0 ? 'days late' : d === 0 ? '' : d === 1 ? 'day' : 'days';
   return `<article class="item ${d < 0 ? 'late' : d <= 30 ? 'soon' : ''}">
   <div class=badge><b>${big}</b><small>${lab}</small></div>
   <div class=mid><b>${ico[r.category] || ico.other} ${esc(r.title)}</b><small>${esc(sub)}</small>
   <small>${gbp(r.cost)} ${r.cost_frequency === 'monthly' ? 'a month' : 'a year'}${r.status === 'in_progress' ? ', ' + esc(who(r.owner_id) || 'Someone') + ' is on it' : ''}</small>${chg(r)}</div>
   <div class=act><button data-a=ren data-id=${r.id}>Renewed</button>
-  <details class=more><summary aria-label="More actions">⋯</summary><div class=pop><button data-a=hist data-id=${r.id}>Price history</button><button data-a=on data-id=${r.id}>I'm on it</button><button data-a=ed data-id=${r.id}>Edit</button></div></details></div></article>`;
+  <details class=more><summary aria-label="More actions">⋯</summary><div class=pop><button data-a=docs data-id=${r.id}>Documents</button><button data-a=hist data-id=${r.id}>Price history</button><button data-a=on data-id=${r.id}>I'm on it</button><button data-a=ed data-id=${r.id}>Edit</button></div></details></div></article>`;
 };
 
 function dash() {
@@ -301,12 +379,13 @@ app.onclick = async e => {
   b.closest('details')?.removeAttribute('open');
   if (a === 'f') { S.f = b.dataset.id; dash(); }
   if (a === 'hist') history(r);
+  if (a === 'docs') docsView(r);
   if (a === 'tab') { S.tab = b.dataset.id; show(); }
   if (a === 'wk') { S.wk = (S.wk || 0) + +b.dataset.id; await loadMeals(); show(); }
   if (a === 'rview') { const rc = S.recipes.find(x => x.id === b.dataset.id); if (rc) recipeView(rc); }
   if (a === 'radd') recipeForm();
   if (a === 'redit') recipeForm(S.recipes.find(x => x.id === b.dataset.id));
-  if (a === 'clear') { await db.from('shopping_items').delete().eq('household_id', S.hh.id).eq('done', true); await loadMeals(); show(); }
+  if (a === 'clear') { const ids = S.items.filter(i => i.done).map(i => i.id); S.items = S.items.filter(i => !i.done); queue([{t:'del', ids}]); show(); }
   if (a === 'plan2shop') {
     const lines = Object.values(S.plan).flatMap(p => (S.recipes.find(x => x.id === p.recipe_id)?.ingredients || '').split('\n')).filter(l => l.trim());
     lines.length ? addItems(lines) : toast('Pick some recipes for the week first');
@@ -334,7 +413,7 @@ function form(r = {}) {
   <div class=row><button>Save</button><button type=button class=ghost id=cx>Cancel</button>${r.id ? '<button type=button class=danger id=del>Delete</button>' : ''}</div></form>`;
   dlg.showModal();
   $('#cx').onclick = () => dlg.close();
-  if (r.id) $('#del').onclick = async () => { if (confirm('Delete this renewal and its history?')) { await db.from('renewals').delete().eq('id', r.id); dlg.close(); load(); toast('Deleted'); } };
+  if (r.id) $('#del').onclick = async () => { if (confirm('Delete this renewal and its history?')) { const ps = (S.docs?.[r.id] || []).map(d => d.path); if (ps.length) await db.storage.from('documents').remove(ps); await db.from('renewals').delete().eq('id', r.id); dlg.close(); load(); toast('Deleted'); } };
   $('#f').onsubmit = async e => {
     e.preventDefault(); const sb = e.submitter; sb.disabled = true; sb.textContent = 'Saving…';
     const f = Object.fromEntries(new FormData(e.target)), nm = f.asset.trim(); let asset_id = null;
