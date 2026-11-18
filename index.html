@@ -210,7 +210,25 @@ function settingsView() {
   const me = S.user.id;
   app.innerHTML = head() + `<h2>Members</h2>${S.members.map(m => `<div class=hrow><div class=top><b>${esc(m.name)}${m.user_id === me ? ' (you)' : ''}</b>${m.user_id === me ? '' : `<button class=danger data-a=rmmember data-id=${m.user_id} style="padding:4px 10px;min-height:36px">Remove</button>`}</div></div>`).join('')}
   <h2>Invite code</h2><div class=hrow><div class=top><b>${esc(S.hh.invite_code)}</b><button class=ghost data-a=newcode>New code</button></div><small>Anyone with this code and an account can join. Make a new one if it has been shared by mistake.</small></div>
+  <h2>Password</h2><button class=ghost data-a=pw>Change password</button>
   <h2>Backup</h2><button class=ghost data-a=export>Download all my data</button><small style="margin-top:6px">A file with your renewals, history, recipes, menus and lists. Attached documents are listed but not included.</small>`;
+}
+
+function changePassword() {
+  dlg.innerHTML = `<form id=f><h2>Change password</h2>
+  <label>New password<input type=password name=p1 minlength=8 required autocomplete=new-password></label>
+  <label>Type it again<input type=password name=p2 minlength=8 required autocomplete=new-password></label>
+  <small>At least 8 characters.</small>
+  <div class=row style="margin-top:12px"><button>Save password</button><button type=button class=ghost id=cx>Cancel</button></div></form>`;
+  dlg.showModal(); $('#cx').onclick = () => dlg.close();
+  $('#f').onsubmit = async e => {
+    e.preventDefault(); const f = e.target.elements;
+    if (f.p1.value !== f.p2.value) return toast('The two passwords do not match');
+    const sb = e.submitter; sb.disabled = true; sb.textContent = 'Saving…';
+    const {error} = await db.auth.updateUser({password:f.p1.value});
+    if (error) { sb.disabled = false; sb.textContent = 'Save password'; return toast(error.message); }
+    dlg.close(); toast('Password changed');
+  };
 }
 
 async function exportAll() {
@@ -497,6 +515,7 @@ app.onclick = async e => {
   if (a === 'rmstaple') { await db.from('pantry_staples').delete().eq('id', b.dataset.id); await loadMeals(); show(); }
   if (a === 'rmmember') { const m = S.members.find(x => x.user_id === b.dataset.id); if (confirm(`Remove ${m.name} from the household?`)) { const {error} = await db.rpc('remove_member', {h:S.hh.id, uid:m.user_id}); if (error) toast(error.message); else { await load(); toast('Removed'); } } }
   if (a === 'newcode' && confirm('Make a new invite code? The old one will stop working.')) { const {data, error} = await db.rpc('regenerate_invite', {h:S.hh.id}); if (error) toast(error.message); else { S.hh.invite_code = data; cacheSave(); show(); toast('New code ready'); } }
+  if (a === 'pw') changePassword();
   if (a === 'export') exportAll();
   if (a === 'radd') recipeForm();
   if (a === 'redit') recipeForm(S.recipes.find(x => x.id === b.dataset.id));
